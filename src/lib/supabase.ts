@@ -1,18 +1,24 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@/types/database';
 
-let client: SupabaseClient | null = null;
+let client: SupabaseClient<Database> | null = null;
+let isConfigured = false;
 
-export function getSupabase(): SupabaseClient {
+export function isSupabaseConfigured(): boolean {
+  const url = import.meta.env.VITE_SUPABASE_URL as string;
+  const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+  return Boolean(url && key && url !== 'https://placeholder.supabase.co' && !url.includes('placeholder'));
+}
+
+export function getSupabase(): SupabaseClient<Database> {
   if (client) return client;
 
   const url = import.meta.env.VITE_SUPABASE_URL as string;
   const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
-  // If env vars are missing or empty, create a minimal dummy client
-  // that won't crash but auth will simply not work
-  if (!url || !key) {
-    console.warn('Supabase env vars missing — auth disabled');
-    client = createClient('https://placeholder.supabase.co', 'placeholder-key', {
+  if (!url || !key || url.includes('placeholder')) {
+    isConfigured = false;
+    client = createClient<Database>('https://placeholder.supabase.co', 'placeholder-key', {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
@@ -23,15 +29,17 @@ export function getSupabase(): SupabaseClient {
   }
 
   try {
-    client = createClient(url, key, {
+    client = createClient<Database>(url, key, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
       },
     });
+    isConfigured = true;
   } catch {
-    client = createClient('https://placeholder.supabase.co', 'placeholder-key', {
+    isConfigured = false;
+    client = createClient<Database>('https://placeholder.supabase.co', 'placeholder-key', {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
@@ -42,3 +50,4 @@ export function getSupabase(): SupabaseClient {
 
   return client;
 }
+

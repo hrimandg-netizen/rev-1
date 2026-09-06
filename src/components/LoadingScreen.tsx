@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { getSupabase, isSupabaseConfigured } from '@/lib/supabase';
 
 interface LoadingScreenProps {
   query: string;
+  jobId?: string;
 }
 
 const STEPS = [
@@ -12,15 +14,50 @@ const STEPS = [
   { icon: '♥', text: 'Finding the best seller for you...' },
 ];
 
-export default function LoadingScreen({ query }: LoadingScreenProps) {
+export default function LoadingScreen({ query, jobId }: LoadingScreenProps) {
   const [step, setStep] = useState(0);
+  const [liveMessage, setLiveMessage] = useState<string | null>(null);
 
+  // Animated steps fallback
   useEffect(() => {
     const interval = setInterval(() => {
       setStep((prev) => (prev < STEPS.length - 1 ? prev + 1 : prev));
     }, 500);
     return () => clearInterval(interval);
   }, []);
+
+  // Realtime subscription if jobId is provided
+  useEffect(() => {
+    if (!jobId || !isSupabaseConfigured()) return;
+
+    try {
+      const supabase = getSupabase();
+      const channel = supabase
+        .channel(`scraping_job_${jobId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'scraping_jobs',
+            filter: `id=eq.${jobId}`,
+          },
+          (payload) => {
+            const updated = payload.new as { progress_message?: string; status?: string };
+            if (updated.progress_message) {
+              setLiveMessage(updated.progress_message);
+            }
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    } catch {
+      // Fallback to animated step text if Realtime subscription fails
+    }
+  }, [jobId]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4">
@@ -63,6 +100,11 @@ export default function LoadingScreen({ query }: LoadingScreenProps) {
       <div className="mb-6 text-center">
         <span className="text-sm text-gray-400 font-medium">Searching for</span>
         <div className="text-xl font-bold text-gray-800 mt-1">"{query}"</div>
+        {liveMessage && (
+          <div className="mt-2 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 px-3 py-1 rounded-full inline-block animate-pulse">
+            Live Worker: {liveMessage}
+          </div>
+        )}
       </div>
 
       {/* Steps */}

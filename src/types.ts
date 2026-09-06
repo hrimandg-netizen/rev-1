@@ -57,4 +57,7 @@ export interface ProductSearchResult {
   summary: string;
   priceRange: { min: number; max: number };
   averageRating: number;
+  productId?: string;
+  isSynthetic?: boolean;
 }
+

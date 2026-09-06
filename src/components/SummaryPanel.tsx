@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { ProductSearchResult, RatingCategory } from '@/types';
-import { Sparkles, Award, Star, IndianRupee, Package, Users, Info } from 'lucide-react';
+import { Sparkles, Award, Star, IndianRupee, Package, Users, Info, Bell, BellRing, Database } from 'lucide-react';
 import RatingBreakdownModal from './RatingBreakdownModal';
+import { useAuth } from '@/hooks/useAuth';
+import { trackProduct, untrackProduct, isProductTracked } from '@/services/userService';
 
 interface SummaryPanelProps {
   result: ProductSearchResult;
@@ -12,6 +14,44 @@ export default function SummaryPanel({ result }: SummaryPanelProps) {
   const savings = Math.round(((priceRange.max - bestPick.price) / priceRange.max) * 100);
   const totalReviews = results.reduce((sum, r) => sum + r.reviewCount, 0);
   const [breakdownRating, setBreakdownRating] = useState<RatingCategory | null>(null);
+  const [tracked, setTracked] = useState(false);
+  const [trackLoading, setTrackLoading] = useState(false);
+  const [trackError, setTrackError] = useState<string | null>(null);
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (user && result.productId) {
+      isProductTracked(user.id, result.productId).then(setTracked);
+    }
+  }, [user, result.productId]);
+
+  const handleToggleTrack = async () => {
+    if (!user) {
+      setTrackError('Please sign in to track product prices.');
+      return;
+    }
+
+    if (!result.productId) {
+      setTrackError('Price tracking requires a registered database product.');
+      return;
+    }
+
+    setTrackLoading(true);
+    setTrackError(null);
+
+    if (tracked) {
+      const success = await untrackProduct(user.id, result.productId);
+      if (success) setTracked(false);
+    } else {
+      const res = await trackProduct(user.id, result.productId, bestPick.price);
+      if (res.success) {
+        setTracked(true);
+      } else {
+        setTrackError(res.error || 'Failed to track product');
+      }
+    }
+    setTrackLoading(false);
+  };
 
   return (
     <>
@@ -21,12 +61,48 @@ export default function SummaryPanel({ result }: SummaryPanelProps) {
 
         <div className="p-6 md:p-8">
           {/* Header */}
-          <div className="flex items-center gap-2 mb-5">
-            <div className="flex items-center gap-1.5 px-3 py-1 bg-blue-100 rounded-full">
-              <Sparkles className="w-4 h-4 text-blue-600" />
-              <span className="text-sm font-bold text-blue-700">AI Summary</span>
+          <div className="flex items-center justify-between gap-2 mb-5 flex-wrap">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-blue-100 rounded-full">
+                <Sparkles className="w-4 h-4 text-blue-600" />
+                <span className="text-sm font-bold text-blue-700">AI Summary</span>
+              </div>
+              {result.isSynthetic ? (
+                <div className="flex items-center gap-1 px-2.5 py-1 bg-amber-50 border border-amber-200 text-amber-700 rounded-full text-xs font-semibold">
+                  <Info className="w-3 h-3 text-amber-500" />
+                  <span>Demo Mode (Synthetic Scanner)</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 px-2.5 py-1 bg-blue-50 border border-blue-200 text-blue-700 rounded-full text-xs font-semibold">
+                  <Database className="w-3 h-3 text-blue-500" />
+                  <span>Real Scraped Pipeline Data</span>
+                </div>
+              )}
             </div>
+
+            {/* Track Price Button */}
+            {result.productId && (
+              <button
+                onClick={handleToggleTrack}
+                disabled={trackLoading}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border font-bold text-xs transition-all ${
+                  tracked
+                    ? 'bg-blue-100 border-blue-300 text-blue-700'
+                    : 'bg-white border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300'
+                }`}
+              >
+                {tracked ? <BellRing className="w-4 h-4 text-blue-600" /> : <Bell className="w-4 h-4 text-blue-500" />}
+                <span>{tracked ? 'Currently Tracked' : 'Track Price'}</span>
+              </button>
+            )}
           </div>
+
+          {trackError && (
+            <div className="mb-4 p-2.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 font-semibold flex items-center justify-between">
+              <span>{trackError}</span>
+              <button onClick={() => setTrackError(null)} className="ml-2 font-bold">✕</button>
+            </div>
+          )}
 
           {/* Product info */}
           <div className="mb-5">
